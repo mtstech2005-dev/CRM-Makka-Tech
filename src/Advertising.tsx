@@ -1,0 +1,35 @@
+import {useState,type FormEvent} from 'react';
+import {useQuery,useMutation} from '@tanstack/react-query';
+import {api,queryClient,platformLabels,money} from './api';
+import type {Campaign,Ad,Spend,TrackingOptions,Platform} from './types';
+import {Modal,Loading,Empty,ErrorBox} from './ui';
+type Kind='campaigns'|'ads'|'spend';
+type Editable=Campaign|Ad|Spend;
+const names={campaigns:'الحملات',ads:'الإعلانات',spend:'المصروفات'};
+export default function Advertising(){
+ const [kind,setKind]=useState<Kind>('campaigns'),[editing,setEditing]=useState<Editable|null|undefined>(),[page,setPage]=useState(1),[notice,setNotice]=useState('');
+ const list=useQuery({queryKey:['advertising',kind,page],queryFn:()=>api<Editable[]|{items:Spend[];total:number;pageSize:number}>('/tracking/'+kind+(kind==='spend'?'?page='+page:''))});
+ const items=Array.isArray(list.data)?list.data:list.data?.items??[];
+ return <><div className="page-heading"><div><h1>الحملات والمصروفات</h1><p>Meta Ads وGoogle Ads، بإسناد واضح ومصروفات مستقلة.</p></div><button className="primary" onClick={()=>setEditing(null)}>إضافة {kind==='campaigns'?'حملة':kind==='ads'?'إعلان':'مصروف'}</button></div><div className="section-tabs">{(Object.keys(names) as Kind[]).map(k=><button key={k} className={kind===k?'primary':'secondary'} onClick={()=>{setKind(k);setPage(1);}}>{names[k]}</button>)}</div>
+ {notice&&<div className="success-box" role="status">{notice}<button onClick={()=>setNotice('')}>×</button></div>}<ErrorBox error={list.error}/>
+ {kind==='spend'&&<p className="form-hint">سجّل إجمالي اليوم مرة واحدة لكل حملة أو إعلان. عدّل السجل لتصحيح قيمته. مصروف الحملة والإعلانات يظهر منفصلًا، ولا يُجمع المستوىان معًا.</p>}
+ <section className="panel">{list.isLoading?<Loading/>:items.length?<div className="table-scroll"><table><thead><tr>{(kind==='spend'?['التاريخ','الحملة','الإعلان / المستوى','المنصة','المبلغ','ملاحظات','الإجراء']:kind==='campaigns'?['الحملة','المنصة','التفعيل','الإجراء']:['الإعلان','الحملة','المنصة','التفعيل','الإجراء']).map(c=><th key={c}>{c}</th>)}</tr></thead><tbody>{items.map(item=><tr key={item.id}>{kind==='spend'?<><td dir="ltr">{(item as Spend).date.slice(0,10)}</td><td>{(item as Spend).campaign.name}</td><td>{(item as Spend).ad?.name??'إجمالي الحملة'}</td><td>{platformLabels[(item as Spend).campaign.platform]}</td><td dir="ltr">{money((item as Spend).amount)}</td><td>{(item as Spend).notes||'—'}</td></>:<><td>{(item as Campaign|Ad).name}</td>{kind==='ads'&&<td>{(item as Ad).campaign?.name}</td>}<td>{platformLabels[kind==='campaigns'?(item as Campaign).platform:(item as Ad).campaign!.platform]}</td><td>{(item as Campaign|Ad).active?'نشط':'معطّل'}</td></>}<td><button className="secondary" onClick={()=>setEditing(item)}>تعديل</button></td></tr>)}</tbody></table></div>:<Empty/>}
+ {kind==='spend'&&list.data&&!Array.isArray(list.data)&&<div className="pagination"><span>{list.data.total} سجل · صفحة {page}</span><div><button disabled={page===1} onClick={()=>setPage(p=>p-1)}>السابق</button><button disabled={page*list.data.pageSize>=list.data.total} onClick={()=>setPage(p=>p+1)}>التالي</button></div></div>}</section>
+ {editing!==undefined&&<Editor kind={kind} item={editing} onClose={()=>setEditing(undefined)} onSaved={()=>{setEditing(undefined);setNotice('تم حفظ التغييرات');queryClient.invalidateQueries();}}/>}</>;
+}
+function Editor({kind,item,onClose,onSaved}:{kind:Kind;item:Editable|null;onClose:()=>void;onSaved:()=>void}){
+ const options=useQuery({queryKey:['tracking-options','all'],queryFn:()=>api<TrackingOptions>('/tracking/options')});
+ const [campaignId,setCampaign]=useState(item&&'campaignId' in item?item.campaignId:''),[adId,setAd]=useState(item&&'adId' in item?item.adId??'':''),[level,setLevel]=useState(item&&'adId' in item&&item.adId?'ad':'campaign');
+ const save=useMutation({mutationFn:(data:unknown)=>api('/tracking/'+kind+(item?'/'+item.id:''),item?'PUT':'POST',data),onSuccess:onSaved});
+ function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);let data:unknown;
+  if(kind==='campaigns')data={name:f.get('name'),platform:item?(item as Campaign).platform:f.get('platform'),active:f.get('active')==='on'};
+  else if(kind==='ads')data={name:f.get('name'),campaignId,active:f.get('active')==='on'};
+  else data={campaignId,adId:level==='ad'?adId:null,date:f.get('date'),amount:f.get('amount'),notes:f.get('notes')||null};
+  save.mutate(data);
+ }
+ return <Modal title={(item?'تعديل ':'إضافة ')+(kind==='campaigns'?'حملة':kind==='ads'?'إعلان':'مصروف')} onClose={onClose}><form onSubmit={submit}><ErrorBox error={save.error??options.error}/><div className="form-grid">
+ {kind!=='spend'&&<label className="full">الاسم<input name="name" required maxLength={150} defaultValue={item&&'name' in item?item.name:''}/></label>}
+ {kind==='campaigns'?<label className="full">المنصة<select name="platform" defaultValue={item?(item as Campaign).platform:'META'} disabled={!!item}>{Object.entries(platformLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>:<label className="full">الحملة<select aria-label="الحملة" name="campaignId" required value={campaignId} disabled={kind==='ads'&&!!item} onChange={e=>{setCampaign(e.target.value);setAd('');}}><option value="">اختر الحملة</option>{options.data?.campaigns.filter(c=>kind==='spend'||c.active||c.id===campaignId).map(c=><option key={c.id} value={c.id}>{c.name} — {platformLabels[c.platform]}{c.active?'':' (معطّلة)'}</option>)}</select></label>}
+ {kind==='spend'&&<><label>مستوى المصروف<select aria-label="مستوى المصروف" value={level} onChange={e=>setLevel(e.target.value)}><option value="campaign">إجمالي الحملة</option><option value="ad">إعلان محدد</option></select></label>{level==='ad'&&<label>الإعلان<select aria-label="الإعلان" required value={adId} onChange={e=>setAd(e.target.value)}><option value="">اختر الإعلان</option>{options.data?.ads.filter(a=>a.campaignId===campaignId).map(a=><option key={a.id} value={a.id}>{a.name}{a.active?'':' (معطّل)'}</option>)}</select></label>}<label>تاريخ المصروف<input name="date" type="date" required defaultValue={item?(item as Spend).date.slice(0,10):new Date().toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'})}/></label><label>المبلغ بالجنيه<input name="amount" required inputMode="decimal" pattern="[0-9]{1,12}(\.[0-9]{1,2})?" dir="ltr" defaultValue={item?(item as Spend).amount:'0'}/></label><label className="full">ملاحظات<textarea name="notes" maxLength={2000} defaultValue={item?(item as Spend).notes??'':''}/></label></>}
+ {kind!=='spend'&&<label className="checkbox-label full"><input name="active" type="checkbox" defaultChecked={item?(item as Campaign|Ad).active:true}/>نشط</label>}</div><p className="form-hint">{kind==='campaigns'?'منصة الحملة ثابتة بعد الإنشاء. التعطيل يحافظ على العملاء السابقين.':kind==='ads'?'الإعلان يظل تابعًا لحملته الأصلية.':'المنصة تُستنتج من الحملة. سجّل المصروف ليوم محدد فقط.'}</p><div className="form-actions"><button className="primary" disabled={save.isPending||options.isPending}>حفظ</button><button type="button" className="secondary" onClick={onClose}>إلغاء</button></div></form></Modal>;
+}

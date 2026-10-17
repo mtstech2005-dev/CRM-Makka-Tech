@@ -1,0 +1,17 @@
+export type Role='ADMIN'|'SALES'|'MEDIA_BUYER'|'SHIPPING';
+export type Status='FOLLOW_UP'|'CONFIRMED'|'LOST';
+export type User={id:string;name:string;email:string;role:Role;active:boolean};
+export type Person={id:string;name:string;active?:boolean};
+export type Source={id:string;name:string;active:boolean};
+export type Field={id:string;name:string;type:'TEXT'|'LONG_TEXT'|'NUMBER'|'SELECT'|'DATE'|'CHECKBOX';active:boolean;deletedAt?:string|null;options:{id:string;label:string;active:boolean}[]};
+export type Lead={campaignId:string|null;adId:string|null;campaign:Campaign|null;ad:Ad|null;shippingStatusId:string|null;orderStatusId:string|null;shippingStatus:WorkflowStatus|null;orderStatus:WorkflowStatus|null;id:string;date:string;customerName:string;phone:string;address:string|null;request:string;price:string;status:Status;sourceId:string;source:Source;createdById:string;assignedSalesId:string;createdBy:Person;assignedSales:Person;notes:string|null;customFieldValues:{fieldId:string;value:string;field:Field;option?:{id:string;label:string}|null}[]};
+export type Lookups={sources:Source[];fields:Field[];sales:Person[];creators:Person[]};
+export type StatsRow={id:string;name:string;leads:number;confirmed:number;followUp:number;lost:number;totalValue:string};
+export type DashboardData={summary:{total:number;confirmed:number;followUp:number;lost:number;totalValue:string};sources:StatsRow[];sales:StatsRow[];status:{status:Status;count:number;totalValue:string}[]};
+export type Platform='META'|'GOOGLE';
+export type Campaign={id:string;name:string;platform:Platform;active:boolean};
+export type Ad={id:string;name:string;campaignId:string;active:boolean;campaign?:Campaign};
+export type WorkflowStatus={id:string;kind:'SHIPPING'|'ORDER';label:string;category:Status|null;active:boolean;systemKey:string|null};
+export type TrackingOptions={campaigns:Campaign[];ads:Ad[];statuses:WorkflowStatus[]};
+export type Spend={id:string;campaignId:string;adId:string|null;campaign:Campaign;ad:Ad|null;date:string;amount:string;notes:string|null};
+export type PerformanceRow={id:string;name:string;campaignId:string;platform:Platform;leads:number;confirmed:number;followUp:number;lost:number;totalValue:string;collectedCount:number;collectedValue:string;campaignSpend:string;adSpend:string;effectiveSpend:string;cpl:string|null;costPerCollected:string|null;roas:string|null};

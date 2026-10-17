@@ -1,0 +1,17 @@
+import {useState} from 'react';
+import {useQuery} from '@tanstack/react-query';
+import {api,qs,money,platformLabels} from './api';
+import type {PerformanceRow,Source,Person} from './types';
+import {Filters,initialFilters} from './Filters';
+import {Empty,ErrorBox,Loading} from './ui';
+function ReportTable({rows,title,ad=false}:{rows:PerformanceRow[];title:string;ad?:boolean}){return <section className="panel"><div className="panel-title"><h2>{title}</h2></div>{rows.length?<div className="table-scroll"><table><thead><tr>{['الاسم','المنصة','العملاء','مؤكد','متابعة','مفقود','قيمة الطلبات','تم التسليم والتحصيل','القيمة المحصلة',...(ad?[]:['مصروف الحملة']), 'مصروف الإعلانات','المصروف المستخدم','CPL','تكلفة الطلب المحصل','ROAS'].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{r.name}</td><td>{platformLabels[r.platform]}</td><td>{r.leads}</td><td>{r.confirmed}</td><td>{r.followUp}</td><td>{r.lost}</td><td dir="ltr">{money(r.totalValue)}</td><td>{r.collectedCount}</td><td dir="ltr">{money(r.collectedValue)}</td>{!ad&&<td dir="ltr">{money(r.campaignSpend)}</td>}<td dir="ltr">{money(r.adSpend)}</td><td dir="ltr">{money(r.effectiveSpend)}</td><td dir="ltr">{r.cpl===null?'—':money(r.cpl)}</td><td dir="ltr">{r.costPerCollected===null?'—':money(r.costPerCollected)}</td><td dir="ltr">{r.roas===null?'—':r.roas+'×'}</td></tr>)}</tbody></table></div>:<Empty/>}</section>;}
+export default function AdvertisingReports(){
+ const [filters,setFilters]=useState(initialFilters);
+ const options=useQuery({queryKey:['dashboard-filters'],queryFn:()=>api<{sources:Source[];sales:Person[]}>('/dashboard/filters')});
+ const report=useQuery({queryKey:['advertising-reports',filters],queryFn:()=>api<{campaigns:PerformanceRow[];ads:PerformanceRow[];totals:PerformanceRow;spendRule:string}>('/advertising-reports?'+qs(filters))});
+ const total=report.data?.totals;
+ return <><div className="page-heading"><div><h1>أداء الحملات والإعلانات</h1><p>قيمة محصلة فعلًا، ومصروفات بدون تكرار.</p></div></div><Filters value={filters} onChange={setFilters} sources={options.data?.sources??[]} sales={options.data?.sales??[]}/><ErrorBox error={report.error??options.error}/>
+ <div className="report-rules"><b>طريقة الحساب</b><p>لكل حملة ولكل يوم: نستخدم مصروف الحملة إن وُجد، وإلا مجموع مصروفات إعلاناتها. المبلغان لا يُجمعان معًا. تقارير الإعلان واختيار إعلان محدد تستخدم مصروف الإعلان فقط؛ لا يتم توزيع مصروف الحملة تقديريًا.</p><p>التحصيل يخص الطلبات بحالة «تم التسليم للعميل» فقط. الفترة تخص تاريخ تسجيل العميل وتاريخ المصروف، وليست تاريخ التسليم. فلاتر الموظف والمصدر والحالات تغيّر العملاء والقيمة فقط، ولا توزّع المصروف بينهم. الرمز — يعني عدم وجود مقام صالح للحساب.</p></div>
+ {report.isLoading?<Loading/>:total&&<><div className="shipping-summary">{[['العملاء المنسوبون',String(total.leads)],['الطلبات المحصلة',String(total.collectedCount)],['القيمة المحصلة',money(total.collectedValue)],['مصروف الحملة',money(total.campaignSpend)],['مصروف الإعلانات',money(total.adSpend)],['مصروف بدون تكرار',money(total.effectiveSpend)],['ROAS',total.roas===null?'—':total.roas+'×']].map(([label,value])=><article className="kpi" key={label}><span>{label}</span><strong className="report-number" dir="ltr">{value}</strong></article>)}</div><div className="analytics-tables"><ReportTable title="أداء الحملات" rows={report.data!.campaigns}/><ReportTable title="أداء الإعلانات — المصروف المباشر فقط" rows={report.data!.ads} ad/></div></>}
+ <p className="footnote">العملاء بدون إسناد إعلاني يظلون ضمن لوحة التحكم العامة، ولا يدخلون في تقارير الحملات.</p></>;
+}
