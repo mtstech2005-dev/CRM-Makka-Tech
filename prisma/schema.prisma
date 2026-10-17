@@ -1,0 +1,188 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+enum Role {
+  ADMIN
+  SALES
+  MEDIA_BUYER
+  SHIPPING
+}
+enum LeadStatus {
+  FOLLOW_UP
+  CONFIRMED
+  LOST
+}
+enum FieldType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  SELECT
+  DATE
+  CHECKBOX
+}
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  passwordHash String
+  role Role @default(SALES)
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdLeads Lead[] @relation("Creator")
+  assignedLeads Lead[] @relation("Assignee")
+  sessions Session[]
+}
+model Session {
+  id String @id
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([expiresAt])
+  @@index([userId])
+}
+model Source {
+  id String @id @default(cuid())
+  name String @unique
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  leads Lead[]
+}
+model Lead {
+  id String @id @default(cuid())
+  date DateTime @default(now())
+  customerName String
+  phone String
+  address String?
+  request String
+  price Decimal @default(0) @db.Decimal(14,2)
+  status LeadStatus @default(FOLLOW_UP)
+  sourceId String
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  notes String?
+  createdById String
+  createdBy User @relation("Creator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedSalesId String
+  assignedSales User @relation("Assignee", fields: [assignedSalesId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  customFieldValues LeadCustomFieldValue[]
+  campaignId String?
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  adId String?
+  ad Ad? @relation(fields: [adId, campaignId], references: [id, campaignId], onDelete: Restrict)
+  shippingStatusId String?
+  shippingStatus WorkflowStatus? @relation("ShippingStatus", fields: [shippingStatusId], references: [id], onDelete: Restrict)
+  orderStatusId String?
+  orderStatus WorkflowStatus? @relation("OrderStatus", fields: [orderStatusId], references: [id], onDelete: Restrict)
+  @@index([campaignId, date])
+  @@index([adId, date])
+  @@index([shippingStatusId, orderStatusId, date])
+  @@index([phone])
+  @@index([customerName])
+  @@index([status])
+  @@index([sourceId])
+  @@index([assignedSalesId])
+  @@index([createdById])
+  @@index([createdAt])
+  @@index([deletedAt, date])
+  @@index([assignedSalesId, deletedAt, date])
+}
+model CustomField {
+  id String @id @default(cuid())
+  name String
+  type FieldType
+  active Boolean @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  options CustomFieldOption[]
+  values LeadCustomFieldValue[]
+}
+model CustomFieldOption {
+  id String @id @default(cuid())
+  fieldId String
+  field CustomField @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+  label String
+  active Boolean @default(true)
+  values LeadCustomFieldValue[]
+  @@unique([fieldId, label])
+}
+model LeadCustomFieldValue {
+  id String @id @default(cuid())
+  leadId String
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Restrict)
+  fieldId String
+  field CustomField @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+  value String
+  optionId String?
+  option CustomFieldOption? @relation(fields: [optionId], references: [id], onDelete: Restrict)
+  @@unique([leadId, fieldId])
+}
+enum AdPlatform {
+  META
+  GOOGLE
+}
+enum WorkflowKind {
+  SHIPPING
+  ORDER
+}
+model Campaign {
+  id String @id @default(cuid())
+  name String
+  platform AdPlatform
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ads Ad[]
+  leads Lead[]
+  spend AdvertisingSpend[]
+  @@index([platform, active])
+}
+model Ad {
+  id String @id @default(cuid())
+  name String
+  campaignId String
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  leads Lead[]
+  spend AdvertisingSpend[]
+  @@unique([id, campaignId])
+  @@index([campaignId, active])
+}
+model AdvertisingSpend {
+  id String @id @default(cuid())
+  campaignId String
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  adId String?
+  ad Ad? @relation(fields: [adId, campaignId], references: [id, campaignId], onDelete: Restrict)
+  date DateTime @db.Date
+  amount Decimal @db.Decimal(14,2)
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([campaignId, date])
+  @@index([adId, date])
+}
+model WorkflowStatus {
+  id String @id @default(cuid())
+  kind WorkflowKind
+  label String
+  category LeadStatus?
+  active Boolean @default(true)
+  systemKey String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  shippingLeads Lead[] @relation("ShippingStatus")
+  orderLeads Lead[] @relation("OrderStatus")
+  @@unique([kind, label])
+}
